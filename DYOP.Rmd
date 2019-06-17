@@ -1,0 +1,338 @@
+---
+title: "Diagnosis of Abnormal Posture from Pelvic Measurements"
+author: "Syed Imran"
+date: "6/16/2019"
+output: pdf_document
+---
+
+# Executive Summary
+
+Diagnosis of abnormalities from medical measurements is a routine task that is performed by medical practicioners. One such diagnosis involves abnormal posture identification from measurements from the pelvis. Data from 310 patients was available from kaggle that was used to perform the classification task.
+
+During exploratory data analysis, one of the features *pelvic_incidence* was observed to be highly correlated to *sacral_slope* and was eliminated from the machine learning models. 
+
+The data was partitioned into equal training and test sets. The training sets were used to train the machine learning methods. Validation was performed using the test sets.
+
+Nineteen different machine learning methods were evaluated simultaneously. The methods with the highest accuracy as well as sensitivity were selected. 
+
+An ensemble model with four different methods was combined using **glm** method. However, it failed to give better results than the single method with the highest accuracy in the test set.
+
+The final method selected was **Rborist**. It has an overall accuracy of 0.872 and sensitivity of 0.886 and specificity of 0.843. The confusion matrix on the test set was:
+
+|           | Reference     |           |
+|-----------|---------------|-----------|
+|Prediction | Abnormal      | Normal    |
+|  Abnormal |      93       |     8     |
+|  Normal   |      12       |    43     |
+
+
+# Objective
+The ojective of the study is to select appropriate machine learning models to diagnose patients with normal/abnormal posture based on pelvic measurements. 
+
+# Methods Analysis
+
+## Data Description
+The data have been organized to help in classifying patients as belonging to one out of two categories: Normal (100 patients) or Abnormal (210 patients). Each patient is represented in the data set by six biomechanical attributes (features) derived from the shape and orientation of the pelvis and lumbar spine (each one is a column): 
+1. pelvic incidence
+2. pelvic tilt
+3. lumbar lordosis angle
+4. sacral slope
+5. pelvic radius
+6. grade of spondylolisthesis
+
+### Data Sources
+The original dataset was downloaded from UCI ML repository: Lichman, M. (2013). [UCI Machine Learning Repository] (http://archive.ics.uci.edu/ml). Irvine, CA: University of California, School of Information and Computer Science
+Files were converted to CSV and downloaded from [Kaggle] (https://www.kaggle.com/uciml/biomechanical-features-of-orthopedic-patients).
+
+## Machine Learning Libraries
+
+In this project, we will evaluate different machine learining algorithms (models) in caret. The *outcome* is categorical binary and can be *normal* or *abnormal*. There are six different numeric *features* which can help in the classification.  
+For this project the main libraries required are **tidyverse** and **caret**. Additional libraries such as **gridExtra** and **kableExtra** were required for outputting exploratory data. **caret** package also requires downloading different models used in this project if they are not available on the user's system. The library **caretEnsemble** was used to develop and test an ensemble model of multiple models.
+
+First we load the required libraries
+
+```{r load required libraries, message=FALSE, warning=FALSE}
+# Load requred libraries. If the required libraries are not 
+# installed on computer, install them from cran repos
+
+if(!require(tidyverse)) install.packages("tidyverse", 
+                                         repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", 
+                                     repos = "http://cran.us.r-project.org")
+if(!require(caretEnsemble)) install.packages("caretEnsemble", 
+                                     repos = "http://cran.us.r-project.org")
+if(!require(gridExtra)) install.packages("gridExtra", 
+                                     repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("kableExtra", 
+                                     repos = "http://cran.us.r-project.org")
+```
+
+## Data Download
+
+The original data was downloaded from Kaggle website and a copy of the data is stored on [Github](https://raw.githubusercontent.com/SyedAImran/
+DYOP-DataScience/master/column_2C_weka.csv). In the next code chunk, we will download the data from Github and read it into a data frame object **data_weka**
+
+```{r download and read the data, message=FALSE, warning=FALSE }
+#Download the data file from github
+
+dl <- tempfile()
+url_data_github <- "https://raw.githubusercontent.com/SyedAImran/
+DYOP-DataScience/master/column_2C_weka.csv"
+download.file(url_data_github,dl)
+#Read the downloaded csv file
+data_weka <- read.csv(dl)
+```
+
+## Exploratory Data Analysis
+
+Our first task is to have a look at the data and examine its basic structure.
+```{r explore the data, message=FALSE, warning=FALSE}
+#Check if the downloaded file is as expected
+glimpse(data_weka)
+```
+
+We observe that there are `r nrow(data_weka)` data with `r ncol(data_weka)` columns. The columns are: `r names(data_weka)`. The first six columns are numeric and the seventh column **class** is a factor type. Next we examine the summary statistics for the data set.
+
+```{r Summary statistics of data, message=FALSE, warning=FALSE}
+#Check data classes, range and summary statistics
+summary(data_weka)
+```
+
+It can be noticed that the data is approximately normal (as mean ~ median) for the first five features. The sixth feature **degree_spondylolisthesis* shows a slight skewness. This can be observed from the chart below:
+
+```{r visual exploration of data, message=FALSE, warning=FALSE}
+require(gridExtra)
+p1 <- data_weka %>% ggplot(aes(y=pelvic_incidence,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="red") +ylab("Pelvic Incidence")
+p2 <- data_weka %>% ggplot(aes(y=pelvic_tilt.numeric,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="blue") + ylab("Pelvic Tilt")
+p3 <- data_weka %>% ggplot(aes(y=pelvic_radius,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="green") + ylab("Pelvic Radius")
+p4 <- data_weka %>% ggplot(aes(y=lumbar_lordosis_angle,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="orange") + ylab("Lumbar Lordosis Angle")
+p5 <- data_weka %>% ggplot(aes(y=sacral_slope,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="yellow") + ylab("Sacral Slope")
+p6 <- data_weka %>% ggplot(aes(y=degree_spondylolisthesis,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="purple") +ylab("Degree Spondylolisthesis")
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2, widths = c(3, 3))
+```
+
+From the chart above, we can observe that there are several data points that can be regarded as outliers. Specifically, the datapoint for *degree_sponylosthesis* > 400. We can either remove this data-point or keep it. But since we are not sure of the medical significance of these extreme value, we will err on side of caution and leave this datapoint in the dataset.
+
+## Partitioning of Test And Training Sets
+
+To ensure reproducible results, we use a *set.seed(2019)* before partitioning our data-set into two equal parts. One part is will be used as the training data and the other half will be used as the test data.
+
+```{r partition of data, message=FALSE, warning=FALSE}
+# Partition Data into two equal Training and Test sets 
+# set.seed(2019) to get comparable results from random partition
+
+set.seed(2019)
+test_index <- createDataPartition(y = data_weka$pelvic_incidence, times = 1, 
+                                  p = 0.5, list = FALSE)
+train_weka <- data_weka[-test_index,]
+test_weka <- data_weka[test_index,]
+```
+
+Now that we have partitioned our data, we will now used the training set exclusively for training our models. But first, we would like to see if the exploratory data for the training set. We do so in a similar way as for the dataset above.
+
+```{r exploration of training data, message=FALSE, warning=FALSE}
+# Check if the partitioned data is similar (balanced) with respect 
+# to the overall data 
+glimpse(train_weka)
+summary(train_weka)
+
+# Exploratory Data Visualization
+
+require(gridExtra)
+p1 <- train_weka %>% ggplot(aes(y=pelvic_incidence,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="red") +ylab("Pelvic Incidence")
+p2 <- train_weka %>% ggplot(aes(y=pelvic_tilt.numeric,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="blue") + ylab("Pelvic Tilt")
+p3 <- train_weka %>% ggplot(aes(y=pelvic_radius,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="green") + ylab("Pelvic Radius")
+p4 <- train_weka %>% ggplot(aes(y=lumbar_lordosis_angle,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="orange") + ylab("Lumbar Lordosis Angle")
+p5 <- train_weka %>% ggplot(aes(y=sacral_slope,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="yellow") + ylab("Sacral Slope")
+p6 <- train_weka %>% ggplot(aes(y=degree_spondylolisthesis,x = class)) +
+  geom_boxplot()+geom_jitter(alpha=0.3, color="purple") +ylab("Degree Spondylolisthesis")
+
+grid.arrange(p1,p2,p3,p4,p5,p6, ncol = 2, widths = c(3, 3))
+
+```
+The training dataset looks good so far, with nothing of particular concern.
+
+## Pre-processing Data
+
+```{r preprocessing data}
+require(kableExtra)
+x <- train_weka[,1:6] %>% as.matrix()
+landscape(knitr::kable(cor(x), digits =3, caption = "Correlation Matrix for Features"))
+```
+We observe from the table above that there is a high correlation (> 0.81) between the features *pelvic_incidence* and *sacral_slope*. One of these features can be safely removed from further analysis. 
+
+```{r Principle Component Analysis}
+x <- train_weka[,2:6] %>% as.matrix()
+pca <- prcomp(x)
+summary(pca)
+
+data.frame(pca$x[,1:5], Class=train_weka$class) %>%
+  ggplot(aes(PC1, PC3, fill=Class)) +
+  geom_point(cex=3, pch=21) +
+  coord_fixed(ratio=1)
+
+d <- dist(x)
+d_approx <- dist(pca$x[,c(1,2)])
+qplot(d, d_approx) +geom_abline(color="red")+coord_fixed(ratio=1)
+```
+
+A principle component analysis indicates that 3 principle components are sufficient to predict more than 90% of data variability. Note: we have previously eliminated *pelvic_incidence* from our subsequent analysis
+
+## Evaluating Different Classification Models
+
+Our next step is to run different machine learning models with their default settings to evaluate which model would be appropriate for further use. The models that are selected are *glm*, *lda*, *naive_bayes*, *svmLinear*, *gamboost*, *gamLoess*, *knn*, *kknn*, *loclda*, *gam*, *rf*, *ranger*, *wsrf*, *Rborist*, *mlp*, *adaboost*, *svmRadial*, *svmRadialCost*, *svmRadialSigma*. All models were run with the caret **train** function. Each model was evaluated on both the training dataset and the testing dataset using the **predict** function. The performance metrics of each model were obtained from the appropriate subsetting of the **confusionMatrix** function. The performance metrics were stored in a *tibble*.
+
+```{r running machine learning models, message=FALSE, warning=FALSE, cache=TRUE}
+# Select a number of models that will be evaluated
+
+models <- c("glm", "lda", "naive_bayes", "svmLinear",
+            "gamboost", "gamLoess", 
+            "knn", "kknn", "loclda", "gam",
+            "rf", "ranger", "wsrf", "Rborist", "mlp", "adaboost",
+            "svmRadial", "svmRadialCost", 
+            "svmRadialSigma")
+
+# models <- c("glm", "lda")
+
+# Loop over models and collect the accuracy, sensitivity and specificity metrics
+# for both the training set and testing set.
+# This loop takes a few minutes/hours to run. It also asks if some packages need
+# to be installed. 
+
+accuracy <- map_df(models, function(model) {
+  
+  print(paste("Training model ---- ", model))
+  
+  # Train the model selected in the loop with default parameters
+  train_weka_model <- train(class~., method=model, data = train_weka[,2:7])
+  
+  # Check accuracy of selected model on training set and save the metrics
+  y_hat_train <- predict(train_weka_model, train_weka, type="raw")
+  cm_train <- confusionMatrix(y_hat_train, train_weka$class)
+  Accuracy_train <- cm_train$overall["Accuracy"]
+  Sensitivity_train <- cm_train$byClass[1]
+  Specificity_train <- cm_train$byClass[2]
+  
+  # Check accuracy of selected model on test set and save the metrics
+  y_hat_test <- predict(train_weka_model, test_weka, type="raw")
+  cm_test <- confusionMatrix(y_hat_test, test_weka$class)
+  Accuracy_test <- cm_test$overall["Accuracy"]
+  Sensitivity_test <- cm_test$byClass[1]
+  Specificity_test <- cm_test$byClass[2]
+  
+  tibble(Model= model, Train_acc = Accuracy_train, Train_sens = Sensitivity_train, 
+         Train_Spec=Specificity_train, Test_acc=Accuracy_test, 
+         Test_sens = Sensitivity_test, Test_spec = Specificity_test)
+})
+
+```
+
+
+# Results
+
+
+```{r display model results}
+# Display in a friendly table
+
+knitr::kable(accuracy, digits = 4, 
+             caption = "Summary of Results from Machine Learning Models")
+```
+
+From the table above, it can be observed that most of the machine learning models had a similar performance. It can be noticed that some of the models (*rf*, *ranger*, *Rborist*, *adaboost*) have very high accuracy, sensitivity and specificity (almost equal to 1) for the training sets. This indicates that these models are suffering from oover-fitting of the training set. A look at the performance of these models on the test set confirms our suspicion as the accuracy declines to comparable levels with the other models.
+
+## Ensemble Model
+
+The highest accuracy and sensitivity come from the *Rborist* model. However, it is the most computationally extensive model in the set and takes several minutes to run. It would be nearly impossible to use for a larger dataset. Therefore, the next step is to build an ensemble model with faster models to see if it can give us an accuracy similar to the more computationally intensive model *RBorist*.
+
+```{r ensemble model}
+# Stacking Algorithms - Run multiple algos in one call.
+trainControl <- trainControl(method="repeatedcv", 
+                             number=10, 
+                             repeats=3,
+                             savePredictions="final", 
+                             classProbs=TRUE)
+
+algorithmList <- c("lda", "knn", "svmRadial", "ranger")
+
+set.seed(2019)
+
+train_models_list <- caretList(class ~ ., data=train_weka[,2:7],
+                               trControl=trainControl, methodList=algorithmList) 
+
+results <- resamples(train_models_list)
+
+summary(results)
+```
+
+
+```{r }
+set.seed(101)
+
+ensembleControl <- trainControl(method="repeatedcv", 
+                             number=10, 
+                             repeats=3,
+                             savePredictions=TRUE, 
+                             classProbs=TRUE)
+
+# Ensemble the predictions of `models` to form a new combined prediction based on glm
+
+ensemble.glm <- caretStack(train_models_list, method="glm", metric="Accuracy",
+                           trControl=ensembleControl)
+
+print(ensemble.glm)
+
+```
+
+```{r}
+# Predict on testData
+
+ensemble_predicteds <- predict(ensemble.glm, newdata=test_weka[,2:7])
+
+#head(ensemble_predicteds)
+
+cm_ensemble <- confusionMatrix(ensemble_predicteds,test_weka$class)
+cm_ensemble$table
+cm_ensemble$overall["Accuracy"]
+
+```
+
+Unexpectedly, our ensemble model which was a combination of *lda*, *knn*, *svmRadial*, and *ranger* models did not do any better than the *Rborist* model. Therefore, we will select the *Rborist* model for our classification/diagnosis of postural abnormalities.
+
+# Conclusions
+```{r running final selected models, message=FALSE, warning=FALSE, cache=TRUE}
+
+  
+  # Train the model selected in the loop with default parameters
+  train_weka_model <- train(class~., method="Rborist", data = train_weka[,2:7])
+  
+  # Check accuracy of selected model on training set and save the metrics
+  y_hat_train <- predict(train_weka_model, train_weka, type="raw")
+  cm_train <- confusionMatrix(y_hat_train, train_weka$class)
+  Accuracy_train <- cm_train$overall["Accuracy"]
+  Sensitivity_train <- cm_train$byClass[1]
+  Specificity_train <- cm_train$byClass[2]
+  
+  # Check accuracy of selected model on test set and save the metrics
+  y_hat_test <- predict(train_weka_model, test_weka, type="raw")
+  cm_test <- confusionMatrix(y_hat_test, test_weka$class)
+  Accuracy_test <- cm_test$overall["Accuracy"]
+  Sensitivity_test <- cm_test$byClass[1]
+  Specificity_test <- cm_test$byClass[2]
+
+
+```
+
+The model selected for our classification/diagnosis of postural abnormalities based on pelvic measurements is **Rborist**. This model had an overall accuracy of `r Accuracy_train` in the training set. The overall accuracy in the test set was `r Accuracy_test`. The confusion matrix for the selected model is shown in table above.
+`r knitr::kable(cm_test$table, digits=3, caption="Confusion Matrix for Selected Method (Rborist)")`
